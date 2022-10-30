@@ -1,4 +1,4 @@
-#### How to remove password prompt for a ZFS encrypted root ubuntu 22.04 installation.
+### How to remove password prompt for a ZFS encrypted root ubuntu 22.04 installation.
 
 You can change the method for entering a key on zfs, and instead of password prompt, to use a file as a key.
 
