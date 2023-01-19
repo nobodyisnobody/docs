@@ -73,6 +73,8 @@ when a socks4 client is connected, it will forward its connection to the request
 like this your code will run on a maximum of devices..
 the code size gain for armv7 or higher versions, are not tremendous..and you loose in compatibility..
 
+* If these shellcodes are too big for a small overflow, just use a read stager to download them..
+
 *I will update these shellcodes when I will optimize them more, or add new versions..new archs..*
 
 
