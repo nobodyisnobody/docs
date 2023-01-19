@@ -58,8 +58,8 @@ when a socks4 client is connected, it will forward its connection to the request
 
 + [x64 version](./socks.x64.py) , the x64 version is actually 280 bytes long
 + [armv5 version](./socks.armv5.py) , the armv5 version is actually 244 bytes long
-+ [armv7 version](./socks.armv7.py) , the armv5 version is actually 238 bytes long
-+ [mips big endian version](./socks.mipseb.py) , the armv5 version is actually 452 bytes long
++ [armv7 version](./socks.armv7.py) , the armv7 version is actually 238 bytes long
++ [mips big endian version](./socks.mipseb.py) , the mips (big endian) version is actually 452 bytes long
 
 
 I will update them when I will optimize them more, or add new versions..
