@@ -1,4 +1,4 @@
-# Modern templates for Modern Shellcoding
+# Modern templates for Shellcoding
 
 
 ## The (not so) boring introduction
