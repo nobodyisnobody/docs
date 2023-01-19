@@ -10,6 +10,8 @@ you should read the first article first, to understand the shellcode generator u
 
 I coded this shellcode some times ago, when I was doing a pwn challenge, involving the exploitation of a box , and pivoting on this box, to reach a second box in the internal network.
 
+These shellcodes were thinked for iot exploitation, to pivot on internal network.
+
 To go faster, I had the idea at this time of coding a small shellcode that spawn a socks proxy on the pivot machine, that will permits to pivot on this machine to reach the internal network.
 
 To reduce the size of the shellcode, I have implemented only the socks4 protocol, where the dns resolving is done by the client
@@ -61,7 +63,16 @@ when a socks4 client is connected, it will forward its connection to the request
 + [armv7 version](./socks.armv7.py) , the armv7 version is actually 238 bytes long
 + [mips big endian version](./socks.mipseb.py) , the mips (big endian) version is actually 452 bytes long
 
+### P.S.:
 
-I will update them when I will optimize them more, or add new versions..
+* you can see that ARM, specially in thumb mode, has a code density a lot higher than mips for example. mips with his 32bit fixed instruction size is really archaic and painful to optimize.
 
-They were think for exploiting iot, to pivot on internal network.
+* the x86 64bit version has a good code density too, because of the quantity of one or two opcodes instructions on x86..
+
+* to maintain a maximum compatibility with various ARM socs you can find on iot, I will recommend to always code your shellcode for armv5 instructions set,
+like this your code will run on a maximum of devices..
+the code size gain for armv7 or higher versions, are not tremendous..and you loose in compatibility..
+
+*I will update these shellcodes when I will optimize them more, or add new versions..new archs..*
+
+
