@@ -107,7 +107,7 @@ then:
 
 well it's probably the `read` syscall , of libc `read()` function, as we can see in the `/proc/pid/maps` output , that 0x7f8062bc6992 is mapped in libc at offset 0x114992 from libc's start. If we check in GDB we can confirm that it is the syscall from `__GI___libc_read+16` libc internal function:
 
-![libc](/BIGRAID/backup/work.challenges/work/mon.github/docs/linux.tricks/Bash.shellcode.injection.oneliner/pics/libc.png)
+![libc](./pics/libc.png)
 
 `__GI___libc_read+18` is the address next to the sycall , that is return in `/proc/pid/syscall`, by read `read a<syscall`
 
@@ -123,7 +123,7 @@ this command open `/proc/$$/mem` for writing on filedescriptor 3.
 
 so everything written to filedescriptor 3, will be written directly in bash process memory
 
-![exec](/BIGRAID/backup/work.challenges/work/mon.github/docs/linux.tricks/Bash.shellcode.injection.oneliner/pics/exec.png)
+![exec](./pics/exec.png)
 
 *`exec` can be used in many other ways too, to change argv0 for example, but we will just concentrate on his usage on filedescriptors*
 
@@ -147,7 +147,7 @@ well that works, but even if you inject your shellcode directly in a process mem
 
 my example above inject a "hello world" shellcode, and goes in an endless loop, let's look at filedescriptors of the bash process after injection:
 
-![](/BIGRAID/backup/work.challenges/work/mon.github/docs/linux.tricks/Bash.shellcode.injection.oneliner/pics/procfd.png)
+![](./pics/procfd.png)
 
 well you see, that filedescriptor 3 is left open, and that's suspicious.
 
