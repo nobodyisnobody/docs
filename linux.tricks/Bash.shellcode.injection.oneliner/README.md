@@ -162,7 +162,7 @@ by adding `exec 3>&-` we closed the filedescriptor after using it..
 
 now there is the problem that bash is left unusable, as the shellcode basically "hijacked" the code execution...
 
-as the `read a<syscall` give a pretty consistent return to a know offset in libc, what we can do is for example is patching at another place in libc.
+as the `read a<syscall` give a pretty consistent return to a known offset in libc, what we can do is patching at another place in libc.
 
 for example, if you look at the `__GI___libc_read()` function disassembly above, you can see that at `__GI___libc_read+106` there is a `ret` followed by some `nop`instruction padding, for alignement process..
 
