@@ -162,3 +162,10 @@ In the two cases, libc will execute `__run_exit_handlers()` function that will c
 
 If the program exits via `_exit()` function  (which name starts with an underscore), the `exit` syscall will be directly called, and the exit handlers will not be executed. You can set a breakpoint in `__run_exit_handlers()`  to verify that it is executed at exit, in case you doubt..
 
+------
+
+### 3 - the FSOP way, targetting stdout
+
+
+
+(in progress)
