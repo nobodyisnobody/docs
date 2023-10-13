@@ -209,7 +209,7 @@ This little test program, will dump 256 bytes of data from memory just before st
 
 as you can see here:
 
-![returned2](./pics/returned2.png)
+![returned2](pics/returned2.png)
 
 so now we have a controlled read primitive.
 
