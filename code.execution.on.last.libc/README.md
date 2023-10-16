@@ -158,9 +158,107 @@ if your gadget does not pass in a `GOT` entry, looks at this write-up, how to ch
 
 The prerequisite for this way to achieve code execution, is that the program must exits via `return`, or via `exit()` libc function.
 
-In the two cases, libc will execute `__run_exit_handlers()` function that will call any `dtors`registered , and will cleanup various things before exiting.
+In the two cases, libc will execute `__run_exit_handlers()` function that will call any destructors function registered (also called `dtors`), and will cleanup various things before exiting.
 
 If the program exits via `_exit()` function  (which name starts with an underscore), the `exit` syscall will be directly called, and the exit handlers will not be executed. You can set a breakpoint in `__run_exit_handlers()`  to verify that it is executed at exit, in case you doubt..
+
+The code changed a bit libc-2.38 , the `__run_exit_handlers()` will call `_dl_fini()` which is defined in the libc source file `elf/dl-fini.c` that will parse each `link_map`, and will call `_dl_call_fini` defined in `elf/dl-call_fini.c` that will do the same than in previous versions
+
+here is the code responsible for calling the registered destructors functions:
+
+```c
+_dl_call_fini (void *closure_map)
+{
+  struct link_map *map = closure_map;
+
+  /* When debugging print a message first.  */
+  if (__glibc_unlikely (GLRO(dl_debug_mask) & DL_DEBUG_IMPCALLS))
+    _dl_debug_printf ("\ncalling fini: %s [%lu]\n\n", map->l_name, map->l_ns);
+
+  /* Make sure nothing happens if we are called twice.  */
+  map->l_init_called = 0;
+
+  ElfW(Dyn) *fini_array = map->l_info[DT_FINI_ARRAY];
+  if (fini_array != NULL)
+    {
+      ElfW(Addr) *array = (ElfW(Addr) *) (map->l_addr
+                                          + fini_array->d_un.d_ptr);
+      size_t sz = (map->l_info[DT_FINI_ARRAYSZ]->d_un.d_val
+                   / sizeof (ElfW(Addr)));
+
+      while (sz-- > 0)
+        ((fini_t) array[sz]) ();
+    }
+
+  /* Next try the old-style destructor.  */
+  ElfW(Dyn) *fini = map->l_info[DT_FINI];
+  if (fini != NULL)
+    DL_CALL_DT_FINI (map, ((void *) map->l_addr + fini->d_un.d_ptr));
+}
+```
+
+`link_map` are a linked list structures, that are parsed one by one by `dl_fini`, each `l_next`entry points to the next `link_map`structure. There is one `link_map` structure for each file mapped by ld.so, in our `prog` binary for example, there are four `link_map`, one for main binary, one for `linux-vdso.so.1`,  one for `./libc.so.6`, and one for `./ld-linux-x86-64.so.2`
+
+So there could be more `link_map` if ld.so load other libraries.
+
+for each `link_map` `_dl_call_fini()`function, check if there if `l_info[DT_FINI_ARRAY]` fini array is defined
+
+> for libc-2.38,  DT_FINI_ARRAY l_info index is 0x1a, DT_FINI_ARRAY l_info index is 0x1c
+
+`l_info[DT_FINI_ARRAY] ` point to a `d_un`structure declared like this:
+
+```c
+ptype l->l_info[DT_FINI_ARRAY]->d_un
+type = union {
+    Elf64_Xword d_val;
+    Elf64_Addr d_ptr;
+}
+```
+
+if `l_info[DT_FINI_ARRAY]` fini array is defined,  array ptr is calculated like this
+
+```c
+ ElfW(Addr) *array = (ElfW(Addr) *) (map->l_addr + fini_array->d_un.d_ptr);
+```
+
+we can see `array` is calculated by adding `map->l_addr` which is the base address mapping of the library or binary, 
+
+that is added with `fini_array->d_un.d_ptr` entry
+
+the entry `l->l_info[DT_FINI_ARRAYSZ]` point to another `d_un` structure that contains the length in byte of `l_info[DT_FINI_ARRAY]`
+
+```c
+size_t sz = (map->l_info[DT_FINI_ARRAYSZ]->d_un.d_val / sizeof (ElfW(Addr)));
+```
+
+then each entries pointed by array are called one by one
+
+```c
+while (sz-- > 0)
+        ((fini_t) array[sz]) ();
+```
+
+ouf ! 😅
+
+so how to get code execution with this mechanism.
+
+Well, there are different ways to do it..
+
+You can target `map->l_addr` , which is the base address mapping of binary or library, and add a value to it..
+
+when `array`will be calculated by adding `map->l_addr` to `fini_array->d_un.d_ptr`, that will shift calculated array further in memory, ideally to a zone where you have forged a fake `fini_array` containing pointers to the functions or gadgets that you want to execute.
+
+another option is to overwrite `l_info[DT_FINI_ARRAY]` and `l_info[DT_FINI_ARRAYSZ]` entries (which are more or less consecutive in memory) , to make them points to a forged `d_un` structure that will make again `array` points to a memory zone you controlled.. like I did in this write-up for example (https://github.com/nobodyisnobody/write-ups/tree/main/DanteCTF.2023/pwn/Sentence.To.Hell)
+
+> By default gcc seems to create an fini_array, in the main binary, even if there are no destructors defined.
+>
+> The l_info[DT_FINI_ARRAY] points to a read-only zone in the binary that cannot be modified.
+>
+> But you can shift `map->l_addr` to make it points further in memory, in the `.bss` for example, where you can create again a forged `fini_array` to alter code execution to the functions or gadgets you want.
+>
+> ld.so leave a pointer on the stack that points to the binary `link_map` in ld.so, this if often a target in format string challenges to get a code execution at exits.. (see here for example:  https://activities.tjhsst.edu/csc/writeups/angstromctf-2021-wallstreet)
+
+
 
 ------
 
