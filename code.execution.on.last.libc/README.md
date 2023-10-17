@@ -203,16 +203,20 @@ So there could be more `link_map` if ld.so load other libraries.
 
 for each `link_map` `_dl_call_fini()`function, check if there if `l_info[DT_FINI_ARRAY]` fini array is defined
 
-> for libc-2.38,  DT_FINI_ARRAY l_info index is 0x1a, DT_FINI_ARRAY l_info index is 0x1c
+> for libc-2.38,  DT_FINI_ARRAY l_info index is 0x1a, DT_FINI_ARRAYSZ l_info index is 0x1c
 
-`l_info[DT_FINI_ARRAY] ` point to a `d_un`structure declared like this:
+`l_info[DT_FINI_ARRAY] ` point to a `ElfW(Dyn)`structure declared like this (in `elf/elf.h`):t
 
 ```c
-ptype l->l_info[DT_FINI_ARRAY]->d_un
-type = union {
-    Elf64_Xword d_val;
-    Elf64_Addr d_ptr;
-}
+typedef struct
+{
+  Elf64_Sxword  d_tag;                  /* Dynamic entry type */
+  union
+    {
+      Elf64_Xword d_val;                /* Integer value */
+      Elf64_Addr d_ptr;                 /* Address value */
+    } d_un;
+} Elf64_Dyn;
 ```
 
 if `l_info[DT_FINI_ARRAY]` fini array is defined,  array ptr is calculated like this
@@ -248,7 +252,7 @@ You can target `map->l_addr` , which is the base address mapping of binary or li
 
 when `array`will be calculated by adding `map->l_addr` to `fini_array->d_un.d_ptr`, that will shift calculated array further in memory, ideally to a zone where you have forged a fake `fini_array` containing pointers to the functions or gadgets that you want to execute.
 
-another option is to overwrite `l_info[DT_FINI_ARRAY]` and `l_info[DT_FINI_ARRAYSZ]` entries (which are more or less consecutive in memory) , to make them points to a forged `d_un` structure that will make again `array` points to a memory zone you controlled.. like I did in this write-up for example (https://github.com/nobodyisnobody/write-ups/tree/main/DanteCTF.2023/pwn/Sentence.To.Hell)
+another option is to overwrite `l_info[DT_FINI_ARRAY]` and `l_info[DT_FINI_ARRAYSZ]` entries (which are more or less consecutive in memory) , to make them points to a forged `Elf64_Dyn` structure that will make again `array` points to a memory zone you controlled.. like I did in this write-up for example (https://github.com/nobodyisnobody/write-ups/tree/main/DanteCTF.2023/pwn/Sentence.To.Hell)
 
 > By default gcc seems to create an fini_array, in the main binary, even if there are no destructors defined.
 >
@@ -257,6 +261,24 @@ another option is to overwrite `l_info[DT_FINI_ARRAY]` and `l_info[DT_FINI_ARRAY
 > But you can shift `map->l_addr` to make it points further in memory, in the `.bss` for example, where you can create again a forged `fini_array` to alter code execution to the functions or gadgets you want.
 >
 > ld.so leave a pointer on the stack that points to the binary `link_map` in ld.so, this if often a target in format string challenges to get a code execution at exits.. (see here for example:  https://activities.tjhsst.edu/csc/writeups/angstromctf-2021-wallstreet)
+
+There is also a second mechanism via `l_info[DT_FINI]` `link_map` entry as you can see in last part of `_dl_call_fini`
+
+```c
+/* Next try the old-style destructor.  */
+  ElfW(Dyn) *fini = map->l_info[DT_FINI];
+  if (fini != NULL)
+    DL_CALL_DT_FINI (map, ((void *) map->l_addr + fini->d_un.d_ptr));
+}
+```
+
+which handle old-style destructors, this is not an array in this case, but only one function that will be called.
+
+It's calculation is done in the same way of "new-style" destructors, by adding `map->l_addr` the base mapping address , with the `Elfw(Dyn)`structure `d_un_d_ptr` entry (structure pointed by the entry `l_info[DT_FINI]`)
+
+So as for previous mechanism, you can write to `l_info[DT_FINI]`  to makes it points to a forged `EflW(Dyn)` structure in a memory zone you control too.
+
+that's even a bit simpler than "new-style" destructors as you have to forge only one structure.
 
 
 
