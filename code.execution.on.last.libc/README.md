@@ -1,8 +1,8 @@
-## Code execution with a write primitive on last libc.
+# Code execution with a write primitive on last libc.
 
 
 
-### 1- Introduction
+## 1- Introduction
 
 This article will try to summarize the various ways to obtain code execution on the last libc with a write primitive.
 
@@ -108,7 +108,7 @@ It is such a great gdb extension that you should not work with something else an
 
 ------
 
-### 1 - Targetting libc GOT entries.
+## 1 - Targetting libc GOT entries.
 
 If you check `libc.so.6` in most linux distro you will see that most of them use protection `Partial Relro`
 
@@ -154,7 +154,7 @@ if your gadget does not pass in a `GOT` entry, looks at this write-up, how to ch
 
 ------
 
-### 2 - Targetting ld.so link_map structure.
+## 2 - Targetting ld.so link_map structure.
 
 > The prerequisite for this way to achieve code execution, is that the program must exits via `return`, or via `exit()` libc function.
 >
@@ -317,7 +317,7 @@ you can find full exemple in file:  `exp_dt_fini.py`  (I leaved various debuggin
 
 ------
 
-### 3 - the FSOP way, targetting stdout
+## 3 - the FSOP way, targetting stdout
 
 well...believe it , or believe it not (magnifique franglais)
 
@@ -365,7 +365,7 @@ this is the same path via `_IO_wfile_underflow` that we used in `byor`challenge 
 
 ------
 
-#### 4 - Code execution via fake custom conversion specifiers 
+## 4 - Code execution via fake custom conversion specifiers 
 
 #### (`__printf_function_table` & `__printf_arginfo_table`)
 
