@@ -752,3 +752,31 @@ write(libc.sym['initial']+24, p64(libc.sym['system']<<17)+p64(next(libc.search(b
 sla('choice> ', '2')
 ```
 
+------
+
+## Last but not least
+
+Well, there is also another way to achieve code execution , it's to leak libc `environ` value which points to the address on stack of environments variables.
+
+Then, to write a ROP directly on stack over the return address of `main()` function, which is at a fixed offset from environments variables.
+
+But, it's not related to a write somewhere in libc or ld.so, and not related to libc version too..
+
+## **You want to explore more ?**
+
+A trick I used often to have a full coverage and disassembly of execution, is to use qiling `qltool` like this:
+
+```sh
+qltool run -v disasm --no-console --log-file disasm.txt --rootfs ./ ./prog
+```
+
+it will produce in `disasm.txt`a full disassembly of every instructions executed from beginning to exit of the program, in prog , libc, or ld.so.
+
+Then you can parse this listing with `grep` (or your own scripts) to search for `call` via register, or `jmp`, or anything you want.
+
+to identify various ways that you can use to have code execution.
+
+You can also produce a coverage file in drcov format that you can import in IDA or Ghidra.
+
+That method is adaptable with many pwn and reverse tasks that you will meet..
+
