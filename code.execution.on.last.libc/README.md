@@ -780,3 +780,39 @@ You can also produce a coverage file in drcov format that you can import in IDA 
 
 That method is adaptable with many pwn and reverse tasks that you will meet..
 
+The full disassembly produced by `qltool` or `qiling` is useful, but it lacks dwarf debugging information , like, to which function the offset belongs, and eventually to which source file, and the line number in this source file..
+
+These useful informations can be extracted by hand with an useful pyelftools examples script:
+
+[https://github.com/eliben/pyelftools/blob/master/examples/dwarf_decode_address.py](https://github.com/eliben/pyelftools/blob/master/examples/dwarf_decode_address.py)
+
+the full disassembly looks like this:
+
+```asm
+[=]     00007ffff7df269a [ld-linux-x86-64.so.2 + 0x01d69a]  31 c0                xor                  eax, eax
+[=]     00007ffff7df269c [ld-linux-x86-64.so.2 + 0x01d69c]  48 8d 7c 24 88       lea                  rdi, [rsp - 0x78]
+[=]     00007ffff7df26a1 [ld-linux-x86-64.so.2 + 0x01d6a1]  48 8d 56 08          lea                  rdx, [rsi + 8]
+[=]     00007ffff7df26a5 [ld-linux-x86-64.so.2 + 0x01d6a5]  b9 34 00 00 00       mov                  ecx, 0x34
+[=]     00007ffff7df26aa [ld-linux-x86-64.so.2 + 0x01d6aa]  f3 48 ab             rep stosq            qword ptr [rdi], rax
+[=]     00007ffff7df26aa [ld-linux-x86-64.so.2 + 0x01d6aa]  f3 48 ab             rep stosq            qword ptr [rdi], rax
+
+```
+
+you have only the filename to which the offset belongs, you does not have the functions names, or anything else..
+
+you can extract this info with the `dwarf_decode_address.py`like this:
+
+```sh
+python3 debug1.py 0x01d69c ld-linux-x86-64.so.2
+Processing file: ld-linux-x86-64.so.2
+Function: _dl_sysdep_parse_arguments
+File: dl-sysdep.c
+Line: 90
+```
+
+you will know that offset 0x1d69c belongs to function `_dl_sysdep_parse_arguments`, which is in source code file `dl-sysdep.c` at line: 90
+
+which will be enough to explore more the function.
+
+I hope `qilinq` will include dwarf debugging information in its disassembly output to ease the exploring of code flow..
+
