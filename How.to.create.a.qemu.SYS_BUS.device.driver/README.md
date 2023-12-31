@@ -1,4 +1,4 @@
-## How to create a qemu SYS_BUS device driver for arm `virt` machine.
+## 
 
 > These are my notes about the process of creating a device driver for **QEMU** of the type TYPE_SYS_BUS_DEVICE. during a challenge creation process.
 
